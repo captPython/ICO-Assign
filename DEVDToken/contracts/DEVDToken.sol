@@ -79,18 +79,21 @@ contract DEVDToken is ERC20Interface, Owned {
     uint8 public decimals;
     uint _totalSupply;
 
-    // Balances for each account
-    mapping(address => uint256) balances;
+    // balanceOf for each account
+    mapping(address => uint256) balanceOfAccounts;
  
     // Owner of account approves the transfer of an amount to another account
     mapping(address => mapping (address => uint256)) allowed;
+
+   // This notifies clients about the amount burnt
+    event Burn(address indexed from, uint256 value);
 
     constructor() public {
         symbol = "DEVD";
         name = "DEVD Supply Token";
         decimals = 18;
         _totalSupply = 1000000 * 10**uint(decimals);
-        balances[owner] = _totalSupply;
+        balanceOfAccounts[owner] = _totalSupply;
         emit Transfer(address(0), owner, _totalSupply);
   }
 
@@ -98,14 +101,14 @@ contract DEVDToken is ERC20Interface, Owned {
     // Total supply
     // ------------------------------------------------------------------------
     function totalSupply() public view returns (uint) {
-        return _totalSupply.sub(balances[address(0)]);
+        return _totalSupply.sub(balanceOfAccounts[address(0)]);
     }
 
     // ------------------------------------------------------------------------
     // Get the token balance for account `tokenOwner`
     // ------------------------------------------------------------------------
     function balanceOf(address tokenOwner) public view returns (uint balance) {
-        return balances[tokenOwner];
+        return balanceOfAccounts[tokenOwner];
     }
 
     // ------------------------------------------------------------------------
@@ -113,10 +116,14 @@ contract DEVDToken is ERC20Interface, Owned {
     // - Owner's account must have sufficient balance to transfer
     // - 0 value transfers are allowed
     // ------------------------------------------------------------------------
-    function transfer(address to, uint tokens) public returns (bool success) {
-       balances[msg.sender] = balances[msg.sender].sub(tokens);
-       balances[to] = balances[to].add(tokens);
-       emit Transfer(msg.sender, to, tokens);
+    function transfer(address _to, uint _tokens) public returns (bool success) {
+    // Prevent transfer to 0x0 address. Use burn() instead
+       require(_to != 0x0);       
+   // Check if the sender has enough
+       require(balanceOfAccounts[msg.sender] >= _tokens);
+       balanceOfAccounts[msg.sender] = balanceOfAccounts[msg.sender].sub(_tokens);
+       balanceOfAccounts[_to] = balanceOfAccounts[_to].add(_tokens);
+       emit Transfer(msg.sender, _to, _tokens);
        return true;
     }
 
@@ -144,9 +151,9 @@ contract DEVDToken is ERC20Interface, Owned {
     // - 0 value transfers are allowed
     // ------------------------------------------------------------------------
     function transferFrom(address from, address to, uint tokens) public returns (bool success) {
-       balances[from] = balances[from].sub(tokens);
+       balanceOfAccounts[from] = balanceOfAccounts[from].sub(tokens);
        allowed[from][msg.sender] = allowed[from][msg.sender].sub(tokens);
-       balances[to] = balances[to].add(tokens);
+       balanceOfAccounts[to] = balanceOfAccounts[to].add(tokens);
        emit Transfer(from, to, tokens);
        return true;
     }
@@ -166,5 +173,12 @@ contract DEVDToken is ERC20Interface, Owned {
     function () public payable {
         revert();
     }
+
+    // ------------------------------------------------------------------------
+    // Owner can transfer out any accidentally sent ERC20 tokens
+    // ------------------------------------------------------------------------
+    function transferAnyERC20Token(address tokenAddress, uint tokens) public onlyOwner returns (bool success) {
+        return ERC20Interface(tokenAddress).transfer(owner, tokens);
+    }    
 
 }
