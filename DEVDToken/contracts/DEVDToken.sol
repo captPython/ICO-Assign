@@ -78,14 +78,19 @@ contract DEVDToken is ERC20Interface, Owned {
     string public  name;
     uint8 public decimals;
     uint _totalSupply;
+    uint256 public sellPrice;                 // For Automatic Buying and Selling
+    uint256 public buyPrice;
 
     // balanceOf for each account
     mapping(address => uint256) balanceOfAccounts;
  
     // Owner of account approves the transfer of an amount to another account
     mapping(address => mapping (address => uint256)) allowed;
+    mapping (address => bool) public frozenAccount;
+    
+    event FrozenFunds(address target, bool frozen);
 
-   // This notifies clients about the amount burnt
+    // This notifies clients about the amount burnt
     event Burn(address indexed from, uint256 value);
 
     constructor() public {
@@ -111,12 +116,31 @@ contract DEVDToken is ERC20Interface, Owned {
         return balanceOfAccounts[tokenOwner];
     }
 
-    // ------------------------------------------------------------------------
-    // Transfer the balance from token owner's account to `to` account
-    // - Owner's account must have sufficient balance to transfer
-    // - 0 value transfers are allowed
-    // ------------------------------------------------------------------------
-        /**
+    /**
+     * Internal transfer, only can be called by this contract
+     */
+    function _transfer(address _from, address _to, uint _tokens) internal {
+
+    // Prevent transfer to 0x0 address. Use burn() instead
+       require(_to != 0x0);       
+
+    // Check if the sender has enough
+       require(balanceOfAccounts[_from] >= _tokens);
+
+    // Funds should not be Frozen
+       require(!frozenAccount[_from]);
+
+    // Save this for an assertion in the future
+       uint previousBalances = balanceOfAccounts[_from] + balanceOfAccounts[_to];       
+       balanceOfAccounts[_from] = balanceOfAccounts[_from].sub(_tokens);
+       balanceOfAccounts[_to] = balanceOfAccounts[_to].add(_tokens);
+      
+       emit Transfer(_from, _to, _tokens);
+    // Asserts are used to use static analysis to find bugs in your code. They should never fail
+       assert(balanceOfAccounts[_from] + balanceOfAccounts[_to] == previousBalances);
+    }
+
+   /**
      * Transfer tokens
      *
      * Send `_value` tokens to `_to` from your account
@@ -125,20 +149,9 @@ contract DEVDToken is ERC20Interface, Owned {
      * @param _tokens the amount to send
      */
 
-    function transfer(address _to, uint _tokens) public returns (bool success) {
-    // Prevent transfer to 0x0 address. Use burn() instead
-       require(_to != 0x0);       
-    // Check if the sender has enough
-       require(balanceOfAccounts[msg.sender] >= _tokens);
-    // Save this for an assertion in the future
-       uint previousBalances = balanceOfAccounts[msg.sender] + balanceOfAccounts[_to];       
-       balanceOfAccounts[msg.sender] = balanceOfAccounts[msg.sender].sub(_tokens);
-       balanceOfAccounts[_to] = balanceOfAccounts[_to].add(_tokens);
-       emit Transfer(msg.sender, _to, _tokens);
-    // Asserts are used to use static analysis to find bugs in your code. They should never fail
-       assert(balanceOfAccounts[msg.sender] + balanceOfAccounts[_to] == previousBalances);
-
-       return true;
+    function transfer(address _to, uint256 _value) public returns (bool success) {
+        _transfer(msg.sender, _to, _value);
+        return true;
     }
 
     // ------------------------------------------------------------------------
@@ -195,6 +208,34 @@ contract DEVDToken is ERC20Interface, Owned {
         _totalSupply = _totalSupply.sub(_tokens);                      // Updates totalSupply
         emit Burn(msg.sender, _tokens);
         return true;
+    }
+
+   /** Contract owner to freeze or unfreeze assets */
+    function freezeAccount(address target, bool freeze) onlyOwner {
+        frozenAccount[target] = freeze;
+        emit FrozenFunds(target, freeze);
+    }
+
+    /** Set Buying and Selling Prices */
+    function setPrices(uint256 newSellPrice, uint256 newBuyPrice) onlyOwner {
+        sellPrice = newSellPrice;
+        buyPrice = newBuyPrice;
+    }
+    
+        function buy() payable returns (uint amount){
+        amount = msg.value / buyPrice;                    // calculates the amount
+        _transfer(this, msg.sender, amount);
+        return amount;
+    }
+
+    function sell(uint amount) returns (uint revenue){
+        require(balanceOfAccounts[msg.sender] >= amount);      // checks if the sender has enough to sell
+        balanceOfAccounts[this] += amount;                     // adds the amount to owner's balance
+        balanceOfAccounts[msg.sender] -= amount;               // subtracts the amount from seller's balance
+        revenue = amount * sellPrice;
+        msg.sender.transfer(revenue);                          // sends ether to the seller: it's important to do this last to prevent recursion attacks
+        emit Transfer(msg.sender, this, amount);               // executes an event reflecting on the change
+        return revenue;                                        // ends function and returns
     }
 
     // ------------------------------------------------------------------------
