@@ -116,14 +116,28 @@ contract DEVDToken is ERC20Interface, Owned {
     // - Owner's account must have sufficient balance to transfer
     // - 0 value transfers are allowed
     // ------------------------------------------------------------------------
+        /**
+     * Transfer tokens
+     *
+     * Send `_value` tokens to `_to` from your account
+     *
+     * @param _to The address of the recipient
+     * @param _tokens the amount to send
+     */
+
     function transfer(address _to, uint _tokens) public returns (bool success) {
     // Prevent transfer to 0x0 address. Use burn() instead
        require(_to != 0x0);       
-   // Check if the sender has enough
+    // Check if the sender has enough
        require(balanceOfAccounts[msg.sender] >= _tokens);
+    // Save this for an assertion in the future
+       uint previousBalances = balanceOfAccounts[msg.sender] + balanceOfAccounts[_to];       
        balanceOfAccounts[msg.sender] = balanceOfAccounts[msg.sender].sub(_tokens);
        balanceOfAccounts[_to] = balanceOfAccounts[_to].add(_tokens);
        emit Transfer(msg.sender, _to, _tokens);
+    // Asserts are used to use static analysis to find bugs in your code. They should never fail
+       assert(balanceOfAccounts[msg.sender] + balanceOfAccounts[_to] == previousBalances);
+
        return true;
     }
 
@@ -150,11 +164,13 @@ contract DEVDToken is ERC20Interface, Owned {
     // - Spender must have sufficient allowance to transfer
     // - 0 value transfers are allowed
     // ------------------------------------------------------------------------
-    function transferFrom(address from, address to, uint tokens) public returns (bool success) {
-       balanceOfAccounts[from] = balanceOfAccounts[from].sub(tokens);
-       allowed[from][msg.sender] = allowed[from][msg.sender].sub(tokens);
-       balanceOfAccounts[to] = balanceOfAccounts[to].add(tokens);
-       emit Transfer(from, to, tokens);
+    function transferFrom(address _from, address _to, uint _tokens) public returns (bool success) {
+     /*  require(_tokens <= allowed[_from][msg.sender]);     // Check allowance Nnot required using safe math*/
+
+       balanceOfAccounts[_from] = balanceOfAccounts[_from].sub(_tokens);
+       allowed[_from][msg.sender] = allowed[_from][msg.sender].sub(_tokens);
+       balanceOfAccounts[_to] = balanceOfAccounts[_to].add(_tokens);
+       emit Transfer(_from, _to, _tokens);
        return true;
     }
 
@@ -166,6 +182,20 @@ contract DEVDToken is ERC20Interface, Owned {
         return allowed[tokenOwner][spender];
     }    
 
+    /**
+     * Destroy tokens
+     *
+     * Remove `_value` tokens from the system irreversibly
+     *
+     * @param _value the amount of money to burn
+     */
+    function burn(uint256 _tokens) public returns (bool success) {
+        require(balanceOfAccounts[msg.sender] >= _tokens);   // Check if the sender has enough
+        balanceOfAccounts[msg.sender] = balanceOfAccounts[msg.sender].sub(_tokens);            // Subtract from the sender
+        _totalSupply = _totalSupply.sub(_tokens);                      // Updates totalSupply
+        emit Burn(msg.sender, _tokens);
+        return true;
+    }
 
     // ------------------------------------------------------------------------
     // Don't accept ETH
